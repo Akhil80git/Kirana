@@ -5,16 +5,29 @@ const TODOS_STORAGE_PREFIX = 'taskflow_todos_';
 
 export type SyncState = 'synced' | 'local_only' | 'syncing' | 'error';
 
+// IN-MEMORY CACHE (0ms instant access across tab switches)
+const memoryCache = new Map<string, TodoItem[]>();
+const hasInitialFetched = new Set<string>();
+
 export const storageService = {
   getLocalStorageKey(userId: string): string {
     return `${TODOS_STORAGE_PREFIX}${userId}`;
   },
 
   getLocalTodos(userId: string): TodoItem[] {
+    // 1. Check ultra-fast In-Memory cache first (0ms)
+    if (memoryCache.has(userId)) {
+      return memoryCache.get(userId)!;
+    }
+
+    // 2. Fallback to LocalStorage
     try {
       const data = localStorage.getItem(this.getLocalStorageKey(userId));
       if (!data) return [];
-      return JSON.parse(data) as TodoItem[];
+      const parsed = JSON.parse(data) as TodoItem[];
+      const clean = parsed.filter(t => !t.id.startsWith('saman_grocery_') && !t.id.startsWith('todo_daily_'));
+      memoryCache.set(userId, clean);
+      return clean;
     } catch (e) {
       console.error('Failed reading local todos:', e);
       return [];
@@ -22,6 +35,8 @@ export const storageService = {
   },
 
   setLocalTodos(userId: string, todos: TodoItem[]) {
+    // Update both In-Memory cache and LocalStorage synchronously
+    memoryCache.set(userId, todos);
     try {
       localStorage.setItem(this.getLocalStorageKey(userId), JSON.stringify(todos));
     } catch (e) {
@@ -30,113 +45,16 @@ export const storageService = {
   },
 
   /**
-   * Initial starter lists illustrating both Saman List (with price & quantity)
-   * and simple Task Checklist (pure check/uncheck without prices).
+   * Load Todos with intelligent caching:
+   * - If already loaded in memory and forceRefresh is false, returns INSTANTLY (0ms, 0 API calls).
+   * - If first load, immediately serves cached data to UI, then syncs with Supabase in background.
    */
-  getInitialStarterTodos(userId: string): TodoItem[] {
-    const now = Date.now();
-    return [
-      {
-        id: 'saman_grocery_' + userId.slice(-4),
-        userId,
-        title: 'किराना सामान लिस्ट (Grocery & Ration)',
-        color: 'amber',
-        type: 'saman',
-        priority: 'high',
-        completed: false,
-        category: 'सामान',
-        createdAt: now - 3600000 * 4,
-        updatedAt: now - 3600000 * 2,
-        subtasks: [
-          {
-            id: 'sub_g1',
-            title: 'आशीर्वाद आटा (10kg Bag)',
-            completed: true,
-            price: 430,
-            quantity: 1,
-            createdAt: now - 3600000 * 3,
-          },
-          {
-            id: 'sub_g2',
-            title: 'फॉर्च्यून सरसों तेल (1L)',
-            completed: true,
-            price: 145,
-            quantity: 2,
-            createdAt: now - 3600000 * 2,
-          },
-          {
-            id: 'sub_g3',
-            title: 'टाटा चाय प्रीमियम (500g)',
-            completed: false,
-            price: 260,
-            quantity: 1,
-            createdAt: now - 3600000,
-          },
-          {
-            id: 'sub_g4',
-            title: 'सफेद चीनी (Sugar 5kg)',
-            completed: false,
-            price: 210,
-            quantity: 1,
-            createdAt: now - 1800000,
-          },
-          {
-            id: 'sub_g5',
-            title: 'अमूल बटर (500g)',
-            completed: false,
-            price: 275,
-            quantity: 1,
-            createdAt: now - 900000,
-          },
-        ],
-      },
-      {
-        id: 'todo_daily_' + userId.slice(-4),
-        userId,
-        title: 'दैनिक जरूरी कार्य (Daily Tasks)',
-        color: 'emerald',
-        type: 'checklist',
-        priority: 'medium',
-        completed: false,
-        category: 'कार्य',
-        createdAt: now - 3600000 * 10,
-        updatedAt: now - 3600000 * 5,
-        subtasks: [
-          {
-            id: 'sub_d1',
-            title: 'सुबह 7 बजे 45 मिनट रनिंग व व्यायाम',
-            completed: true,
-            createdAt: now - 3600000 * 8,
-          },
-          {
-            id: 'sub_d2',
-            title: 'बिजली और वाई-फाई का बिल भुगतान करना',
-            completed: false,
-            createdAt: now - 3600000 * 6,
-          },
-          {
-            id: 'sub_d3',
-            title: 'मार्केट से जरूरी सामान खरीदकर लाना',
-            completed: false,
-            createdAt: now - 3600000 * 4,
-          },
-          {
-            id: 'sub_d4',
-            title: 'शाम को परिवार के साथ समय बिताना',
-            completed: false,
-            createdAt: now - 3600000 * 2,
-          },
-        ],
-      },
-    ];
-  },
+  async loadTodos(userId: string, forceRefresh = false): Promise<{ todos: TodoItem[]; syncState: SyncState; errorMsg?: string }> {
+    const cached = this.getLocalTodos(userId);
 
-  async loadTodos(userId: string): Promise<{ todos: TodoItem[]; syncState: SyncState; errorMsg?: string }> {
-    let local = this.getLocalTodos(userId);
-
-    if (local.length === 0) {
-      local = this.getInitialStarterTodos(userId);
-      this.setLocalTodos(userId, local);
+    // If already in memory and not forcing refresh, return immediately without any network call
+    if (hasInitialFetched.has(userId) && !forceRefresh && cached.length > 0) {
+      return { todos: cached, syncState: 'synced' };
     }
 
     try {
@@ -147,41 +65,48 @@ export const storageService = {
         .order('created_at', { ascending: false });
 
       if (error) {
-        return { todos: local, syncState: 'local_only', errorMsg: error.message };
+        hasInitialFetched.add(userId);
+        return { todos: cached, syncState: 'local_only', errorMsg: error.message };
       }
 
       if (data && data.length > 0) {
-        const remoteTodos: TodoItem[] = data.map(row => ({
-          id: row.id,
-          userId: row.user_id,
-          title: row.title,
-          description: row.description || '',
-          color: row.color || 'emerald',
-          type: row.type === 'checklist' ? 'checklist' : 'saman',
-          priority: row.priority || 'medium',
-          completed: !!row.completed,
-          category: row.category,
-          subtasks: Array.isArray(row.subtasks) ? row.subtasks : [],
-          createdAt: new Date(row.created_at || Date.now()).getTime(),
-          updatedAt: new Date(row.updated_at || Date.now()).getTime(),
-        }));
+        const remoteTodos: TodoItem[] = data
+          .filter(row => !row.id.startsWith('saman_grocery_') && !row.id.startsWith('todo_daily_'))
+          .map(row => ({
+            id: row.id,
+            userId: row.user_id,
+            title: row.title,
+            description: row.description || '',
+            color: row.color || 'emerald',
+            type: row.type === 'checklist' ? 'checklist' : row.type === 'ecommerce' ? 'ecommerce' : 'saman',
+            priority: row.priority || 'medium',
+            completed: !!row.completed,
+            category: row.category,
+            subtasks: Array.isArray(row.subtasks) ? row.subtasks : [],
+            createdAt: new Date(row.created_at || Date.now()).getTime(),
+            updatedAt: new Date(row.updated_at || Date.now()).getTime(),
+          }));
 
         this.setLocalTodos(userId, remoteTodos);
+        hasInitialFetched.add(userId);
         return { todos: remoteTodos, syncState: 'synced' };
-      } else if (local.length > 0) {
-        this.syncAllToSupabase(userId, local).catch(console.warn);
-        return { todos: local, syncState: 'synced' };
+      } else if (cached.length > 0) {
+        this.syncAllToSupabase(userId, cached).catch(console.warn);
+        hasInitialFetched.add(userId);
+        return { todos: cached, syncState: 'synced' };
       }
 
-      return { todos: local, syncState: 'synced' };
+      hasInitialFetched.add(userId);
+      return { todos: cached, syncState: 'synced' };
     } catch (err: unknown) {
+      hasInitialFetched.add(userId);
       const msg = err instanceof Error ? err.message : 'Network error';
-      return { todos: local, syncState: 'local_only', errorMsg: msg };
+      return { todos: cached, syncState: 'local_only', errorMsg: msg };
     }
   },
 
   async saveTodo(userId: string, todo: TodoItem): Promise<{ success: boolean; syncState: SyncState }> {
-    const local = this.getLocalTodos(userId);
+    const local = [...this.getLocalTodos(userId)];
     const index = local.findIndex(t => t.id === todo.id);
 
     if (index >= 0) {
@@ -189,6 +114,7 @@ export const storageService = {
     } else {
       local.unshift(todo);
     }
+    // Update memory & local cache immediately
     this.setLocalTodos(userId, local);
 
     try {
@@ -252,4 +178,9 @@ export const storageService = {
       return false;
     }
   },
+
+  clearMemoryCache() {
+    memoryCache.clear();
+    hasInitialFetched.clear();
+  }
 };

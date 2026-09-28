@@ -7,9 +7,8 @@ import {
   BarChart3, 
   Cloud, 
   LogOut, 
-  User as UserIcon,
   Database,
-  ShieldCheck
+  History
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -17,6 +16,7 @@ interface HeaderProps {
   onTabChange: (tab: ActiveTab) => void;
   currentUser: AppUser | null;
   syncState: SyncState;
+  completedCount: number;
   onOpenSupabaseModal: () => void;
   onLogout: () => void;
   onOpenAuth: () => void;
@@ -27,6 +27,7 @@ export const Header: React.FC<HeaderProps> = ({
   onTabChange,
   currentUser,
   syncState,
+  completedCount,
   onOpenSupabaseModal,
   onLogout,
   onOpenAuth,
@@ -35,61 +36,85 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header className="sticky top-0 z-30 bg-zinc-950/95 backdrop-blur-md border-b border-zinc-800/80 transition-all">
-      <div className="max-w-4xl mx-auto px-3 sm:px-6">
+      <div className="max-w-4xl mx-auto px-2.5 sm:px-6">
         <div className="flex items-center justify-between h-14">
           
-          {/* Main 3 Navigation Icon Tabs (Clean minimal neutral aesthetic) */}
-          <div className="flex items-center p-1 bg-zinc-900 border border-zinc-800 rounded-xl gap-1">
+          {/* Main 4 Navigation Icon Tabs */}
+          <div className="flex items-center p-1 bg-zinc-900 border border-zinc-800 rounded-xl gap-0.5 sm:gap-1">
             
-            {/* 1. View Icon (Default tab: Shows all cards) */}
+            {/* 1. View Icon (Default tab: Shows pending/active cards) */}
             <button
               type="button"
               onClick={() => onTabChange('view')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 activeTab === 'view'
                   ? 'bg-zinc-100 text-zinc-950 shadow-sm'
                   : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
               }`}
-              title="लिस्ट देखें"
+              title="सक्रिय लिस्ट देखें"
             >
-              <CheckSquare className="w-4 h-4 stroke-[2.2]" />
-              <span className="hidden xs:inline">लिस्ट</span>
+              <CheckSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
+              <span>लिस्ट</span>
             </button>
 
-            {/* 2. Template Icon */}
+            {/* 2. Template / Add Icon */}
             <button
               type="button"
               onClick={() => onTabChange('templates')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 activeTab === 'templates'
                   ? 'bg-zinc-100 text-zinc-950 shadow-sm'
                   : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
               }`}
-              title="नया जोड़ें (Templates & Add)"
+              title="नयी लिस्ट जोड़ें (Templates)"
             >
-              <LayoutGrid className="w-4 h-4 stroke-[2.2]" />
-              <span className="hidden xs:inline">जोड़ें</span>
+              <LayoutGrid className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
+              <span>जोड़ें</span>
             </button>
 
             {/* 3. Analytics Icon */}
             <button
               type="button"
               onClick={() => onTabChange('analytics')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 activeTab === 'analytics'
                   ? 'bg-zinc-100 text-zinc-950 shadow-sm'
                   : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
               }`}
-              title="एनालिटिक्स"
+              title="एनालिटिक्स & हिसाब"
             >
-              <BarChart3 className="w-4 h-4 stroke-[2.2]" />
-              <span className="hidden xs:inline">हिसाब</span>
+              <BarChart3 className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
+              <span>हिसाब</span>
+            </button>
+
+            {/* 4. History Icon (Dedicated tab for completed items) */}
+            <button
+              type="button"
+              onClick={() => onTabChange('history')}
+              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === 'history'
+                  ? 'bg-zinc-100 text-zinc-950 shadow-sm'
+                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+              }`}
+              title="पूर्ण कार्य इतिहास (Completed History)"
+            >
+              <History className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
+              <span>हिस्ट्री</span>
+              {completedCount > 0 && (
+                <span className={`text-[10px] font-mono px-1 rounded ${
+                  activeTab === 'history' 
+                    ? 'bg-zinc-300 text-zinc-950 font-bold' 
+                    : 'bg-zinc-800 text-zinc-400'
+                }`}>
+                  {completedCount}
+                </span>
+              )}
             </button>
 
           </div>
 
           {/* Right minimal status & profile */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             
             {/* Supabase status minimal button */}
             <button

@@ -10,11 +10,13 @@ import { SupabaseGuideModal } from './components/SupabaseGuideModal';
 import { ShareListModal } from './components/ShareListModal';
 import { TemplatesView } from './components/TemplatesView';
 import { AnalyticsView } from './components/AnalyticsView';
+import { HistoryView } from './components/HistoryView';
+import { SkeletonCard } from './components/SkeletonCard';
 import { isToday } from './lib/dateUtils';
 import { Plus, Search, Layers, X } from 'lucide-react';
 
 export default function App() {
-  // Navigation: Default tab is 'view' (shows all cards)
+  // Navigation: Default tab is 'view' (shows pending/active cards)
   const [activeTab, setActiveTab] = useState<ActiveTab>('view');
 
   // Authentication & Persistent User Session
@@ -59,13 +61,14 @@ export default function App() {
     }
   }, [currentUser]);
 
-  // PROGRESSIVE / STAGED LOADING:
-  // Step 1: Render Today's items immediately (0ms delay)
-  // Step 2: Stream in older items smoothly without freezing UI
+  // PROGRESSIVE STAGED LOADING:
+  // ONLY active list view items are processed on initial boot!
+  // History is strictly on-demand when user clicks a duration in History tab.
   useEffect(() => {
     if (!currentUser) {
       setAllTodos([]);
       setRenderedTodos([]);
+      setIsLoading(false);
       return;
     }
 
@@ -79,23 +82,14 @@ export default function App() {
       setAllTodos(loaded);
       setSyncState(res.syncState);
 
-      // Separate today's items from older items
-      const todayItems = loaded.filter(t => isToday(t.createdAt));
-      const olderItems = loaded.filter(t => !isToday(t.createdAt));
+      // Active items only for the list view
+      const activeItems = loaded.filter(t => !t.completed);
+      const todayIncomplete = activeItems.filter(t => isToday(t.createdAt));
+      const otherIncomplete = activeItems.filter(t => !isToday(t.createdAt));
 
-      // 1. Immediately render Today's items
-      setRenderedTodos(todayItems.length > 0 ? todayItems : loaded.slice(0, 4));
+      // 1. Immediately render Today's incomplete items first, then others
+      setRenderedTodos(activeItems.length > 0 ? [...todayIncomplete, ...otherIncomplete] : []);
       setIsLoading(false);
-
-      // 2. Automatically load all remaining items smoothly
-      if (olderItems.length > 0) {
-        const timer = setTimeout(() => {
-          if (isMounted) {
-            setRenderedTodos(loaded);
-          }
-        }, 120);
-        return () => clearTimeout(timer);
-      }
     });
 
     return () => {
@@ -155,6 +149,18 @@ export default function App() {
     setSyncState(res.syncState);
   };
 
+  const handleRestoreTodo = async (todo: TodoItem) => {
+    // Unmark as completed and bring back to active view
+    const restoredTodo: TodoItem = {
+      ...todo,
+      completed: false,
+      subtasks: (todo.subtasks || []).map(s => ({ ...s, completed: false })),
+      updatedAt: Date.now(),
+    };
+    await handleSaveTodo(restoredTodo);
+    setActiveTab('view');
+  };
+
   const handleOpenEditModal = (todo: TodoItem) => {
     setEditingTodo(todo);
     setModalDefaultType(todo.type);
@@ -182,9 +188,19 @@ export default function App() {
     setSyncState(res.syncState);
   };
 
-  // Filter & Prioritize Today's cards
-  const displayTodos = useMemo(() => {
+  // Completed items specifically for History tab
+  const completedTodos = useMemo(() => {
+    return allTodos.filter(t => t.completed);
+  }, [allTodos]);
+
+  // Main View lists: Strictly active/pending lists, prioritized:
+  // 1st: Today's incomplete (aaj ke bache huye kam)
+  // 2nd: Other days' incomplete (baaki dinon ke bache huye kam)
+  const activeTodosForView = useMemo(() => {
     const list = renderedTodos.filter(todo => {
+      // Filter out completed lists from main view (they go to History!)
+      if (todo.completed) return false;
+
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matchTitle = todo.title.toLowerCase().includes(q);
@@ -205,27 +221,32 @@ export default function App() {
       return true;
     });
 
-    // Today's items appear first
+    // PRIORITY SORTING:
+    // 1st: Today's incomplete (isToday === true && !completed)
+    // 2nd: Other days' incomplete (isToday === false && !completed)
     return list.sort((a, b) => {
       const aIsToday = isToday(a.createdAt);
       const bIsToday = isToday(b.createdAt);
+
       if (aIsToday && !bIsToday) return -1;
       if (!aIsToday && bIsToday) return 1;
+
       return b.createdAt - a.createdAt;
     });
   }, [renderedTodos, searchQuery, filterType]);
 
-  const todayCount = allTodos.filter(t => isToday(t.createdAt)).length;
+  const todayIncompleteCount = allTodos.filter(t => isToday(t.createdAt) && !t.completed).length;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col antialiased">
       
-      {/* Top Navbar: Clean Icon Navigation */}
+      {/* Top Navbar: Clean Icon Navigation with History */}
       <Header
         activeTab={activeTab}
         onTabChange={setActiveTab}
         currentUser={currentUser}
         syncState={syncState}
+        completedCount={completedTodos.length}
         onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
         onLogout={handleLogout}
         onOpenAuth={() => setIsAuthModalOpen(true)}
@@ -234,7 +255,7 @@ export default function App() {
       {/* Main Container */}
       <main className="flex-1 max-w-4xl w-full mx-auto px-3 sm:px-6 py-4 pb-24">
         
-        {/* TAB 1: VIEW (Default screen - Direct Cards Only) */}
+        {/* TAB 1: VIEW (Default screen - Today's incomplete first, then other days' incomplete) */}
         {activeTab === 'view' && (
           <div className="space-y-4">
             
@@ -249,10 +270,10 @@ export default function App() {
                       : 'text-zinc-400 hover:text-white'
                   }`}
                 >
-                  सभी ({allTodos.length})
+                  बाकी काम ({allTodos.filter(t => !t.completed).length})
                 </button>
 
-                {/* Today's Focus Filter */}
+                {/* Today's Incomplete Focus Filter */}
                 <button
                   onClick={() => setFilterType('today')}
                   className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 whitespace-nowrap ${
@@ -262,7 +283,7 @@ export default function App() {
                   }`}
                 >
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  <span>आज ({todayCount})</span>
+                  <span>आज के बाकी ({todayIncompleteCount})</span>
                 </button>
 
                 <button
@@ -309,15 +330,16 @@ export default function App() {
               </div>
             </div>
 
-            {/* Direct Cards Grid */}
+            {/* Direct Cards Grid: Skeleton during loading */}
             {isLoading ? (
-              <div className="py-20 flex flex-col items-center justify-center gap-3">
-                <div className="w-7 h-7 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" />
-                <p className="text-xs text-zinc-400">लोड हो रहा है...</p>
-              </div>
-            ) : displayTodos.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                {displayTodos.map(todo => (
+                <SkeletonCard />
+                <SkeletonCard />
+                <SkeletonCard />
+              </div>
+            ) : activeTodosForView.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                {activeTodosForView.map(todo => (
                   <TodoCard
                     key={todo.id}
                     todo={todo}
@@ -332,18 +354,32 @@ export default function App() {
               <div className="py-16 text-center max-w-md mx-auto px-4 bg-zinc-900/50 border border-zinc-800/80 rounded-2xl">
                 <Layers className="w-8 h-8 text-zinc-500 mx-auto mb-2.5" />
                 <h3 className="text-sm font-bold text-white">
-                  {filterType === 'today' ? 'आज की कोई लिस्ट नहीं है' : 'कोई लिस्ट नहीं मिली'}
+                  {completedTodos.length > 0 
+                    ? 'सभी काम पूरे हो चुके हैं! (हिस्ट्री में देखें)' 
+                    : (filterType === 'today' ? 'आज का कोई बाकी काम नहीं है' : 'कोई सक्रिय लिस्ट नहीं है')}
                 </h3>
                 <p className="mt-1 text-xs text-zinc-400">
-                  नीचे + बटन से तुरंत नया सामान या टास्क जोड़ें।
+                  {completedTodos.length > 0 
+                    ? 'आपके पूरे किए गए काम ऊपर "हिस्ट्री" टैब में सुरक्षित हैं।' 
+                    : 'नीचे + बटन से अपनी नयी लिस्ट बनाएं।'}
                 </p>
-                <button
-                  onClick={handleOpenDirectSamanAdd}
-                  className="mt-3.5 px-4 py-2 bg-zinc-100 hover:bg-white text-zinc-950 font-bold rounded-xl text-xs inline-flex items-center gap-1.5 shadow-sm active:scale-95"
-                >
-                  <Plus className="w-4 h-4 stroke-[3]" />
-                  <span>+ सामान जोड़ें</span>
-                </button>
+                <div className="mt-4 flex items-center justify-center gap-2">
+                  <button
+                    onClick={handleOpenDirectSamanAdd}
+                    className="px-4 py-2 bg-zinc-100 hover:bg-white text-zinc-950 font-bold rounded-xl text-xs inline-flex items-center gap-1.5 shadow-sm active:scale-95"
+                  >
+                    <Plus className="w-4 h-4 stroke-[3]" />
+                    <span>+ सामान जोड़ें</span>
+                  </button>
+                  {completedTodos.length > 0 && (
+                    <button
+                      onClick={() => setActiveTab('history')}
+                      className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white font-semibold rounded-xl text-xs transition-colors"
+                    >
+                      हिस्ट्री देखें ({completedTodos.length})
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 
@@ -365,6 +401,15 @@ export default function App() {
             onDeleteTodo={handleDeleteTodo}
             onEditTodo={handleOpenEditModal}
             onShareTodo={setSharingTodo}
+          />
+        )}
+
+        {/* TAB 4: HISTORY (Dedicated On-Demand View: 30 days / 6 months / all) */}
+        {activeTab === 'history' && (
+          <HistoryView
+            getCompletedTodos={() => allTodos.filter(t => t.completed)}
+            onRestoreTodo={handleRestoreTodo}
+            onDeleteTodo={handleDeleteTodo}
           />
         )}
 

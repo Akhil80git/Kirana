@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { TodoItem, SubTask, Priority, TodoType } from '../types/todo';
+import { TodoItem, SubTask, TodoType } from '../types/todo';
 import { 
   X, 
   Plus, 
@@ -39,9 +39,8 @@ export const TodoModal: React.FC<TodoModalProps> = ({
   const [itemPrice, setItemPrice] = useState('');
   const [itemQty, setItemQty] = useState('1');
 
-  // Input ref to keep mobile keyboard open seamlessly
+  // Input ref to keep mobile keyboard open seamlessly without viewport jumping
   const itemTitleInputRef = useRef<HTMLInputElement>(null);
-  const itemsEndRef = useRef<HTMLDivElement>(null);
   const listContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -72,7 +71,7 @@ export const TodoModal: React.FC<TodoModalProps> = ({
     if (isOpen) {
       const timer = setTimeout(() => {
         itemTitleInputRef.current?.focus();
-      }, 120);
+      }, 100);
       return () => clearTimeout(timer);
     }
   }, [isOpen]);
@@ -95,7 +94,7 @@ export const TodoModal: React.FC<TodoModalProps> = ({
     itemTitleInputRef.current?.focus();
   };
 
-  // Add Item to list with continuous keyboard focus and auto-scroll
+  // Add Item to list without any viewport jitter or screen jumping
   const handleAddItem = (e?: React.FormEvent | React.MouseEvent | React.TouchEvent) => {
     if (e) e.preventDefault();
     if (!itemTitle.trim()) {
@@ -120,12 +119,12 @@ export const TodoModal: React.FC<TodoModalProps> = ({
     setItemPrice('');
     setItemQty('1');
 
-    // Smoothly scroll the items list down so the newly added item is immediately visible
+    // Smoothly scroll ONLY the internal list container to bottom (NO scrollIntoView, NO screen shift)
     requestAnimationFrame(() => {
+      if (listContainerRef.current) {
+        listContainerRef.current.scrollTop = listContainerRef.current.scrollHeight;
+      }
       itemTitleInputRef.current?.focus();
-      setTimeout(() => {
-        itemsEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }, 50);
     });
   };
 
@@ -162,16 +161,15 @@ export const TodoModal: React.FC<TodoModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end sm:justify-center items-center bg-black/80 backdrop-blur-sm sm:p-4 animate-in fade-in duration-150">
       
-      {/* Main Container: Full viewport height on mobile, cleanly framed on desktop */}
+      {/* Modal Container: Solid frame, stable layout, zero viewport bounce */}
       <div 
-        className="w-full sm:max-w-xl bg-zinc-900 border-0 sm:border border-zinc-800 sm:rounded-2xl rounded-t-3xl shadow-2xl flex flex-col h-[100dvh] sm:h-auto sm:max-h-[88vh] text-zinc-100 overflow-hidden"
+        className="w-full sm:max-w-xl bg-zinc-900 border-t sm:border border-zinc-800 sm:rounded-2xl rounded-t-3xl shadow-2xl flex flex-col h-[90dvh] sm:h-auto sm:max-h-[85vh] text-zinc-100 overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         
-        {/* 1. TOP HEADER BAR: Title, Mode Badges, Live Total, Save Button */}
-        <div className="px-3.5 sm:px-5 py-2.5 sm:py-3 border-b border-zinc-800 bg-zinc-950/90 flex items-center justify-between shrink-0 gap-2">
+        {/* 1. Header Bar */}
+        <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-950 flex items-center justify-between shrink-0 gap-2">
           
-          {/* Left: Close & Title */}
           <div className="flex items-center gap-2 min-w-0 flex-1">
             <button
               type="button"
@@ -182,7 +180,7 @@ export const TodoModal: React.FC<TodoModalProps> = ({
               <X className="w-5 h-5" />
             </button>
 
-            {/* List Title (Tap to edit if needed) */}
+            {/* Title */}
             <div className="min-w-0 flex-1">
               {isEditingTitle ? (
                 <div className="flex items-center gap-1">
@@ -218,7 +216,7 @@ export const TodoModal: React.FC<TodoModalProps> = ({
             </div>
           </div>
 
-          {/* Right: Live Total Badge & Finish / Save Button */}
+          {/* Right: Live Total & Save Button */}
           <div className="flex items-center gap-2 shrink-0">
             {isPriced && (
               <div className="flex items-baseline gap-1 bg-zinc-900 border border-zinc-800 px-2.5 py-1 rounded-lg">
@@ -240,9 +238,9 @@ export const TodoModal: React.FC<TodoModalProps> = ({
 
         </div>
 
-        {/* 2. MODE SELECTOR ROW: Saman vs E-commerce vs Checklist */}
-        <div className="px-3.5 sm:px-5 py-1.5 bg-zinc-950/60 border-b border-zinc-800/80 flex items-center justify-between gap-1 shrink-0">
-          <div className="flex items-center gap-1 bg-zinc-900/80 p-0.5 rounded-lg border border-zinc-800">
+        {/* 2. Type Selector Tabs */}
+        <div className="px-4 py-1.5 bg-zinc-950/70 border-b border-zinc-800 flex items-center justify-between gap-1 shrink-0">
+          <div className="flex items-center gap-1 bg-zinc-900 p-0.5 rounded-lg border border-zinc-800">
             <button
               type="button"
               onClick={() => {
@@ -291,7 +289,7 @@ export const TodoModal: React.FC<TodoModalProps> = ({
           </span>
         </div>
 
-        {/* 3. MIDDLE SCROLLABLE ADDED ITEMS LIST (Takes all available space!) */}
+        {/* 3. Middle Scrollable Items Area (Smooth container-only scroll, NO page jump) */}
         <div 
           ref={listContainerRef}
           className="flex-1 overflow-y-auto overscroll-contain p-3 sm:p-4 space-y-1.5"
@@ -341,12 +339,11 @@ export const TodoModal: React.FC<TodoModalProps> = ({
                   </div>
                 );
               })}
-              <div ref={itemsEndRef} />
             </div>
           ) : (
-            <div className="h-full min-h-[160px] flex flex-col items-center justify-center text-center p-4">
-              <div className="w-10 h-10 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-center text-zinc-500 mb-2">
-                {isPriced ? <ShoppingBag className="w-5 h-5" /> : <CheckSquare className="w-5 h-5" />}
+            <div className="h-full min-h-[140px] flex flex-col items-center justify-center text-center p-4">
+              <div className="w-9 h-9 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-center text-zinc-500 mb-2">
+                {isPriced ? <ShoppingBag className="w-4 h-4" /> : <CheckSquare className="w-4 h-4" />}
               </div>
               <p className="text-xs font-semibold text-zinc-300">
                 {isPriced ? 'सामान की लिस्ट अभी खाली है' : 'टास्क लिस्ट अभी खाली है'}
@@ -358,15 +355,15 @@ export const TodoModal: React.FC<TodoModalProps> = ({
           )}
         </div>
 
-        {/* 4. FIXED BOTTOM INPUT TOOLBAR (Pinned right above keyboard) */}
+        {/* 4. Fixed Bottom Input Bar: Perfectly stable, anchored above keyboard */}
         <div className="shrink-0 bg-zinc-950 border-t border-zinc-800 p-2.5 sm:p-3">
           
           <form 
             onSubmit={handleAddItem}
             className="space-y-2 max-w-2xl mx-auto"
           >
-            {/* Row 1: Product Name input */}
-            <div className="relative">
+            {/* Product Name input */}
+            <div>
               <input
                 ref={itemTitleInputRef}
                 type="text"
@@ -377,7 +374,7 @@ export const TodoModal: React.FC<TodoModalProps> = ({
               />
             </div>
 
-            {/* Row 2: Price + Quantity Stepper + Add Button */}
+            {/* Price + Quantity Stepper + Add Button */}
             <div className="flex items-center gap-2">
               
               {/* Price input */}
@@ -396,7 +393,7 @@ export const TodoModal: React.FC<TodoModalProps> = ({
                 </div>
               )}
 
-              {/* Quantity Stepper with Touch-Friendly +/- */}
+              {/* Quantity Stepper */}
               {isPriced && (
                 <div className="flex items-center bg-zinc-900 border border-zinc-700/80 rounded-xl p-0.5 shrink-0">
                   <button
@@ -415,7 +412,7 @@ export const TodoModal: React.FC<TodoModalProps> = ({
                     min="1"
                     value={itemQty}
                     onChange={e => setItemQty(e.target.value)}
-                    className="w-9 bg-transparent text-center text-xs font-mono font-bold text-white focus:outline-none"
+                    className="w-8 bg-transparent text-center text-xs font-mono font-bold text-white focus:outline-none"
                     title="मात्रा (Quantity)"
                   />
 
@@ -447,7 +444,7 @@ export const TodoModal: React.FC<TodoModalProps> = ({
 
             {/* Helper micro-text */}
             <div className="flex items-center justify-between text-[10px] text-zinc-400 pt-0.5">
-              <span>Enter दबाकर लगातार जोड़ते जाएं (कीबोर्ड खुला रहेगा)</span>
+              <span>Enter दबाएं या 'जोड़ें' दबाएं (कीबोर्ड खुला रहेगा)</span>
               {isPriced && liveTotal > 0 && (
                 <span className="font-mono text-zinc-300">
                   टोटल: ₹{liveTotal.toLocaleString()}

@@ -46,7 +46,33 @@ export function formatCardDateTime(timestamp: number): { formatted: string; isTo
   return { formatted: `${day} ${month} ${year} • ${timeStr}`, isToday: false, isYesterday: false };
 }
 
-export function matchesDateFilter(timestamp: number, filter: string): boolean {
+export function matchesExactDate(timestamp: number, yyyyMmDd: string): boolean {
+  if (!yyyyMmDd) return true;
+  const date = new Date(timestamp);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const currentStr = `${year}-${month}-${day}`;
+  return currentStr === yyyyMmDd;
+}
+
+export function matchesMonth(timestamp: number, yyyyMm: string): boolean {
+  if (!yyyyMm || yyyyMm === 'all') return true;
+  const date = new Date(timestamp);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const currentStr = `${year}-${month}`;
+  return currentStr === yyyyMm;
+}
+
+export function matchesDateFilter(timestamp: number, filter: string, customDate?: string, customMonth?: string): boolean {
+  if (customDate) {
+    return matchesExactDate(timestamp, customDate);
+  }
+  if (customMonth && customMonth !== 'all') {
+    return matchesMonth(timestamp, customMonth);
+  }
+
   if (filter === 'all') return true;
   if (filter === 'today') return isToday(timestamp);
   if (filter === 'yesterday') return isYesterday(timestamp);

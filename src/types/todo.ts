@@ -7,7 +7,7 @@ export interface SubTask {
   title: string;
   completed: boolean;
   price?: number; // Price per item (in ₹)
-  quantity?: number; // Quantity / Aunty (defaults to 1)
+  quantity?: number; // Quantity (defaults to 1)
   createdAt: number;
 }
 
@@ -114,7 +114,8 @@ export const COLOR_THEMES: Record<string, ColorTheme> = {
   },
 };
 
-export type ActiveTab = 'view' | 'templates' | 'analytics';
+export type ActiveTab = 'view' | 'templates' | 'analytics' | 'history';
 export type DateFilter = 'all' | 'today' | 'yesterday' | 'this_week' | 'this_month';
+export type HistoryPeriod = '30_days' | '6_months' | 'all';
 export type FilterStatus = 'all' | 'saman' | 'checklist' | 'completed';
 export type SortOption = 'newest' | 'oldest' | 'price_desc' | 'alphabetical';
