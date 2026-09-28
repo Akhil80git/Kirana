@@ -1,0 +1,6 @@
+{
+  "name": "TaskFlow Pro - Nested Todo & Budget Planner",
+  "description": "Fast, colorful, and responsive nested todo and expense tracker with multi-level subtasks, price calculations, and Supabase cloud sync.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
